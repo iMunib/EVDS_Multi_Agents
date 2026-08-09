@@ -179,19 +179,40 @@
 
 /* ---------- decentralised fallback / medical backup ---------- */
 
-// Used by supervisor1 after a dispatch SLA breach and by firetruck.asl
-// for serious-fire medical backup. Matching idle responders wait in
-// proportion to their ETA; the lowest-ETA responder normally announces
-// its claim first.
+/* ---------- decentralised fallback / medical backup ---------- */
+
+// A responder may use fallback only when:
+// - it is idle,
+// - another agent has not already claimed this incident,
+// - it has no normal dispatcher assignment,
+// - it has not already started another fallback assignment,
+// - and its vehicle type matches the requested type.
+
 +!selfAssign(IncId,Type,Loc)
-   : status("idle") & not claimed(IncId) & my_vehicle_type(Type)
+   : status("idle")
+     & not claimed(IncId)
+     & not assigned_incident(_,_,_)
+     & not fallback_assignment(_)
+     & my_vehicle_type(Type)
+
    <- ?at(Node);
+
       getETA(Node,Loc,Eta);
+
+      // Lower ETA responders wait less, so they normally claim first.
       DelayMs = Eta * 150;
       .wait(DelayMs);
 
-      if (not claimed(IncId)) {
+      // Re-check all conditions after waiting. A normal dispatcher
+      // assignment may have arrived while this agent waited.
+      if (not claimed(IncId)
+          & not assigned_incident(_,_,_)
+          & not fallback_assignment(_)) {
+
+         +fallback_assignment(IncId);
+
          .broadcast(tell,claimed(IncId));
+
          .print("[FALLBACK] self-assigning to ",IncId,
                 " at ",Loc," (ETA ~",Eta,"s)");
 
@@ -201,16 +222,18 @@
          getCoords(SceneNode,SX,SY);
          !pushToMap(SX,SY,"on_scene");
 
-         // The fallback message has no original severity. A safe default
-         // keeps type-specific scene plans executable.
+         // Fallback requests do not include original severity.
          !onSceneWork(IncId,Loc,1);
          !afterSceneWork(IncId,Loc,1);
 
          !returnToStation;
+
+         -fallback_assignment(IncId);
       }.
 
+// Ignore fallback requests when busy, already assigned, claimed,
+// or a mismatched vehicle type.
 +!selfAssign(_,_,_).
-
 /* ---------- background fuel-station resource use ---------- */
 
 // Each responder already focuses its own station's fuel artifact through

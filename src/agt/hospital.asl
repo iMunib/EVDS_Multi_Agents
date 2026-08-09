@@ -1,28 +1,34 @@
-// hospital.asl (FIXED)
+// hospital.asl
+// Shared by hospital_general and hospital_stmarys.
 //
-// BUG: the original makeArtifact() call had no [wid(...)] annotation,
-// so the HospitalArtifact was created in this agent's own default
-// workspace. ambulance.asl's lookupArtifact("hospital_general_art",HId)
-// (also with no wid) only succeeds if it happens to search the same
-// workspace -- fragile, and observed to fail once agents explicitly
-// join multiple workspaces. Fix: create it explicitly in cityHub,
-// the one workspace every vehicle agent also joins.
+// Important: HospitalArtifact instances are created explicitly in
+// cityHub. Ambulances also look them up in cityHub, so all agents
+// use the same shared hospital-capacity resource.
 
 +!setupHospital(Cap)
    <- .my_name(Me);
       .concat(Me,"_art",ArtName);
+
+      // cityHub is declared in evds.jcm; the join can complete
+      // asynchronously, so wait until its workspace identifier exists.
       ?joined(cityHub,CityHubWid);
-      makeArtifact(ArtName,"evds.HospitalArtifact",[Cap],HId)[wid(CityHubWid)];
+
+      makeArtifact(ArtName,"evds.HospitalArtifact",
+                   [Cap],HId)[wid(CityHubWid)];
+
       +hosp_art(HId);
       focus(HId);
-      .print("[HOSPITAL] ",Me," online with ",Cap," beds");
+
+      .print("[HOSPITAL] ",Me,
+             " online with ",Cap," beds");
+
       !turnover.
 
 +?joined(Name,Id) <- .wait(100); ?joined(Name,Id).
 
-// Autonomous behaviour: the hospital is not just a passive resource --
-// it periodically discharges a patient on its own initiative, freeing a
-// bed without anyone asking.
+// Hospitals autonomously discharge patients over time, restoring bed
+// capacity and demonstrating that they are active agents as well as
+// shared environment resources.
 +!turnover
    <- .wait(math.random*20000+15000);
       ?hosp_art(HId);

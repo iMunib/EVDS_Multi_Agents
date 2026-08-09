@@ -1,36 +1,45 @@
 // ambulance.asl -- medical responder.
-// Movement, bidding, org plans and the fallback protocol all come from
-// common_responder.asl; this file only defines what an ambulance
-// actually *does* at a scene and afterwards.
+// Movement, bidding, organisational response handling, and fallback
+// behaviour come from common_responder.asl. This file provides the
+// ambulance-specific patient-treatment and hospital-admission logic.
 
 my_vehicle_type("medical").
 
-// Known hospital artifact names (each hospital agent creates its own,
-// see hospital.asl). A more open system would discover these through a
-// directory/yellow-pages artifact instead of a static list -- noted as
-// a simplification in the report.
+// These names are created by hospital.asl:
+// hospital_general  -> hospital_general_art
+// hospital_stmarys  -> hospital_stmarys_art
 hospital_artifact("hospital_general_art").
 hospital_artifact("hospital_stmarys_art").
 
 +!onSceneWork(IncId,Loc,Sev)
-   <- .print("[AMBULANCE] treating patient at ",Loc," (severity ",Sev,")");
+   <- .print("[AMBULANCE] treating patient at ",Loc,
+             " (severity ",Sev,")");
       .wait(1500).
 
 +!afterSceneWork(IncId,Loc,Sev)
-   <- !deliverToNearestHospital(Sev).
+   <- !deliverToAvailableHospital(Sev).
 
-+!deliverToNearestHospital(Sev)
-   <- .findall(H,hospital_artifact(H),All);
-      !tryHospitals(All,Sev).
++!deliverToAvailableHospital(Sev)
+   <- .findall(H,hospital_artifact(H),Hospitals);
+      !tryHospitals(Hospitals,Sev).
 
+// If both hospitals are full, the ambulance remains occupied and
+// retries later. Hospital agents independently discharge patients,
+// so capacity can become available without another request.
 +!tryHospitals([],Sev)
-   <- .print("[AMBULANCE] every hospital is full -- holding patient and retrying");
+   <- .print("[AMBULANCE] all hospitals are full; holding patient and retrying");
       .wait(3000);
-      !deliverToNearestHospital(Sev).
+      !deliverToAvailableHospital(Sev).
 
+// Look up every hospital in cityHub explicitly. Without [wid(...)],
+// lookupArtifact searches the ambulance's current/default workspace
+// and fails with ArtifactNotAvailableException.
 +!tryHospitals([HArt|Rest],Sev)
-   <- lookupArtifact(HArt,HId);
+   <- ?joined(cityHub,CityHubWid);
+      lookupArtifact(HArt,HId)[wid(CityHubWid)];
+
       admitPatient(Accepted)[artifact_id(HId)];
+
       if (Accepted) {
          .print("[AMBULANCE] patient admitted at ",HArt);
       } else {
