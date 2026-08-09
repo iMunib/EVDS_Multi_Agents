@@ -1,0 +1,122 @@
+/*
+    EVDS - Emergency Vehicle Dispatch System
+    CST3118 Group Project - JaCaMo implementation
+
+    Run with:  gradle run
+    (from the project root, once this folder has been dropped into a
+    JaCaMo gradle scaffold -- see README.md for the exact steps)
+*/
+
+mas evds {
+
+    // ---------------- Agent dimension ----------------
+    agent dispatcher1 : dispatcher.asl {
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: cityHub.mapView
+    }
+
+    agent supervisor1 : supervisor.asl
+
+    agent amb1 : ambulance.asl {
+        goals: setupVehicle("Station_North")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationNorth.fuelPumpN
+    }
+    agent amb2 : ambulance.asl {
+        goals: setupVehicle("Station_North")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationNorth.fuelPumpN
+    }
+    agent amb3 : ambulance.asl {
+        goals: setupVehicle("Station_South")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationSouth.fuelPumpS
+    }
+
+    agent fire1 : firetruck.asl {
+        goals: setupVehicle("Station_North")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationNorth.fuelPumpN
+    }
+    agent fire2 : firetruck.asl {
+        goals: setupVehicle("Station_South")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationSouth.fuelPumpS
+    }
+
+    agent police1 : police.asl {
+        goals: setupVehicle("Station_North")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationNorth.fuelPumpN
+    }
+    agent police2 : police.asl {
+        goals: setupVehicle("Station_South")
+        focus: cityHub.cityMap
+        focus: cityHub.board
+        focus: stationSouth.fuelPumpS
+    }
+
+    agent hospital_general : hospital.asl {
+        goals: setupHospital(12)
+        focus: cityHub.board
+    }
+    agent hospital_stmarys : hospital.asl {
+        goals: setupHospital(8)
+        focus: cityHub.board
+    }
+
+    agent incident_generator : incident_generator.asl {
+        focus: cityHub.board
+    }
+
+    agent traffic_monitor : traffic_monitor.asl {
+        focus: cityHub.cityMap
+    }
+
+    // ---------------- Environment dimension ----------------
+    // cityHub: the shared "downtown" workspace every agent that needs
+    // city-wide information joins (map, incident board, live map view).
+    workspace cityHub {
+        artifact cityMap : evds.CityMapArtifact()
+        artifact board   : evds.DispatchBoardArtifact()
+        artifact mapView : evds.CityMapGUI() {
+            focused-by: dispatcher1
+        }
+    }
+
+    // Two extra workspaces, one per physical station, each with its own
+    // local resource (a small pool of fuel pumps). Vehicles based at a
+    // station join only that station's workspace -- a simple example of
+    // partitioning the environment instead of dumping every artifact into
+    // one global workspace.
+    workspace stationNorth {
+        artifact fuelPumpN : evds.FuelStationArtifact(2)
+    }
+    workspace stationSouth {
+        artifact fuelPumpS : evds.FuelStationArtifact(2)
+    }
+
+    // ---------------- Organization dimension ----------------
+    organisation evdsOrg : evds-os.xml {
+        group dispatchGrp : dispatchGroup {
+            players: dispatcher1      dispatcher
+                     amb1             ambulance_role
+                     amb2             ambulance_role
+                     amb3             ambulance_role
+                     fire1            firetruck_role
+                     fire2            firetruck_role
+                     police1          police_role
+                     police2          police_role
+                     hospital_general hospital_role
+                     hospital_stmarys hospital_role
+                     supervisor1      supervisor_role
+        }
+    }
+}
