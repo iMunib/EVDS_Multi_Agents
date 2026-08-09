@@ -57,7 +57,7 @@
       .print("[DISPATCH] assigning ",Winner," to ",IncId,
              " (best ETA ~",Eta,"s)");
 
-      .send(Winner,achieve,joinIncident(IncId)).
+      .send(Winner,achieve,joinIncident(IncId,Loc,Sev)).
 
 -!allocateVehicle[scheme(Sch)]
    <- ?goalArgument(Sch,handleIncident,"IncId",IncId);

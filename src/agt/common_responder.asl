@@ -72,30 +72,55 @@
 
 /* ---------- organisational goal: I won the Contract-Net round ------------------ */
 
-+!joinIncident(IncId)
-   <- .concat("sch_",IncId,SchName);
+/* ---------- organisational goal: I won the Contract-Net round ------------------ */
+
+// The dispatcher now sends the selected responder the location and
+// severity directly. Store them locally BEFORE committing to mRespond,
+// because committing enables respondOnScene immediately.
+
++!joinIncident(IncId,Loc,Sev)
+   <- +assigned_incident(IncId,Loc,Sev);
+
+      .concat("sch_",IncId,SchName);
       ?joined(evdsOrg,OrgWid);
       lookupArtifact(SchName,SchArtId)[wid(OrgWid)];
       focus(SchArtId);
+
+      .print("[ASSIGNMENT] received ",IncId,
+             " at ",Loc," (severity ",Sev,")");
+
       commitMission(mRespond)[artifact_id(SchArtId)].
 
+// Do NOT retrieve Loc/Sev through goalArgument here. The award message
+// already gave this vehicle the correct Java-string values, and those
+// values work with CityMapArtifact.getRoute/getETA.
+
 +!respondOnScene[scheme(Sch)]
-   <- ?goalArgument(Sch,handleIncident,"IncId",IncId);
-      ?goalArgument(Sch,handleIncident,"Loc",Loc);
-      ?goalArgument(Sch,handleIncident,"Sev",Sev);
+   <- ?assigned_incident(IncId,Loc,Sev);
+
+      .print("[RESPONDER] travelling to ",Loc,
+             " for ",IncId);
+
       !travelTo(Loc);
+
       ?at(Node);
       getCoords(Node,X,Y);
       !pushToMap(X,Y,"on_scene");
+
       !onSceneWork(IncId,Loc,Sev).
 
 +!closeIncident[scheme(Sch)]
-   <- ?goalArgument(Sch,handleIncident,"IncId",IncId);
-      ?goalArgument(Sch,handleIncident,"Loc",Loc);
-      ?goalArgument(Sch,handleIncident,"Sev",Sev);
+   <- ?assigned_incident(IncId,Loc,Sev);
+
       !afterSceneWork(IncId,Loc,Sev);
+
       !returnToStation;
-      closeOutIncident(IncId).
+
+      closeOutIncident(IncId);
+
+      // Clear the saved assignment only after the responder has
+      // completed its work and returned home.
+      -assigned_incident(IncId,Loc,Sev).
 
 /* ---------- movement: follow the shortest path hop by hop ---------------------- */
 
