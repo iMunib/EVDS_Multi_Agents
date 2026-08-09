@@ -1,83 +1,83 @@
-// common_responder.asl (DIAGNOSTIC TRACE VERSION 2)
+// common_responder.asl
+// Shared behaviour for ambulance.asl, firetruck.asl, and police.asl.
 //
-// Fix vs. the previous trace attempt: the fallback "+!bid(IncId,Type,Loc)"
-// plan was missing its terminating "." after the .print(...) call --
-// every Jason plan must end with a period, and that one only closed
-// the print's parentheses, leaving the plan body technically
-// unterminated. That's exactly why the parser choked on the very next
-// line ("+!joinIncident...") -- it was still inside the previous plan.
+// Prerequisites:
+// - ambulance.asl must contain: my_vehicle_type("medical").
+// - firetruck.asl must contain: my_vehicle_type("fire").
+// - police.asl must contain:    my_vehicle_type("patrol").
+// - CityMapArtifact.java must include the getNextHop(from,to,nextNode)
+//   CArtAgO operation added during the routing fix.
+
+/* ---------- bootstrap: create this responder's vehicle state ---------- */
 
 +!setupVehicle(Home)
    <- .my_name(Me);
       +home_station(Home);
       +at(Home);
+
+      // The cityMap focus declared in evds.jcm is asynchronous.
+      // Wait/retry until getCoords can be invoked successfully.
       !safeGetCoords(Home,X0,Y0);
+
       .concat(Me,"_veh",VehArtName);
       ?joined(cityHub,CityHubWid);
-      makeArtifact(VehArtName,"evds.VehicleArtifact",[Me,X0,Y0],VehId)[wid(CityHubWid)];
+
+      makeArtifact(VehArtName,"evds.VehicleArtifact",
+                   [Me,X0,Y0],VehId)[wid(CityHubWid)];
       +veh_art(VehId);
       focus(VehId);
+
       lookupArtifact("mapView",MapViewId)[wid(CityHubWid)];
       +map_view(MapViewId);
       vehicleUpdate(Me,X0,Y0,"idle")[artifact_id(MapViewId)];
-      .print("[TRACE] ",Me," setup complete. My beliefs: status=",status(_)," type=",my_vehicle_type(_));
+
+      .print("[VEHICLE] ",Me," ready at ",Home);
       !fuelLoop.
 
 +!safeGetCoords(Node,X,Y)
    <- getCoords(Node,X,Y).
+
 -!safeGetCoords(Node,X,Y)
    <- .wait(300);
       !safeGetCoords(Node,X,Y).
 
+// Workspace joins declared in the JCM configuration finish asynchronously.
 +?joined(Name,Id) <- .wait(100); ?joined(Name,Id).
+
+/* ---------- vehicle/map update helper ---------- */
 
 +!pushToMap(X,Y,Status)
    <- ?veh_art(VehId);
       updatePosition(X,Y,Status)[artifact_id(VehId)];
+
       ?map_view(MapViewId);
       .my_name(Me);
       vehicleUpdate(Me,X,Y,Status)[artifact_id(MapViewId)].
 
-/* ---------- Contract-Net bidding when solicited by the dispatcher -------------- */
+/* ---------- Contract-Net bidding ---------- */
 
-+!bid(IncId,Type,Loc) : status("idle")
-   <- .my_name(Me);
-      .print("[TRACE] ",Me," entered guarded +!bid for ",IncId,
-             " (Type=",Type,", Loc=",Loc,")");
-      ?my_vehicle_type(MyType);
-      .term2string(Type,TypeS);
-      .term2string(MyType,MyTypeS);
-      .print("[TRACE] ",Me," TypeS=",TypeS," MyTypeS=",MyTypeS," equal=",(TypeS == MyTypeS));
-      if (TypeS == MyTypeS) {
-         ?at(Node);
-         getETA(Node,Loc,Eta);
-         .print("[TRACE] ",Me," got ETA ",Eta," from ",Node," to ",Loc,", submitting bid");
-         submitBid(IncId,Me,Eta);
-         .print("[TRACE] ",Me," submitBid call returned (no exception)");
-      }.
-
-// TRACE: if we land here instead of the plan above, the context guard
-// (status("idle")) failed -- this prints proof of that, and shows the
-// current status belief(s) so we can see the mismatch. NOTE the "."
-// terminating the plan this time.
+// An idle responder bids only when its declared vehicle type exactly
+// matches the string type in the incident broadcast.
 +!bid(IncId,Type,Loc) : status("idle") & my_vehicle_type(Type)
    <- ?at(Node);
       getETA(Node,Loc,Eta);
       .my_name(Me);
-      .print("[BID] ",Me," bidding for ",IncId,
-             " from ",Node," to ",Loc,"; ETA ~",Eta,"s");
+
+      .print("[BID] ",Me,
+             " bidding for ",IncId,
+             " at ",Loc,
+             "; ETA ~",Eta,"s");
+
       submitBid(IncId,Me,Eta).
 
+// Ignore bids while busy or when the emergency type does not match.
 +!bid(_,_,_).
 
-/* ---------- organisational goal: I won the Contract-Net round ------------------ */
+/* ---------- organisational response assignment ---------- */
 
-/* ---------- organisational goal: I won the Contract-Net round ------------------ */
-
-// The dispatcher now sends the selected responder the location and
-// severity directly. Store them locally BEFORE committing to mRespond,
-// because committing enables respondOnScene immediately.
-
+// dispatcher1 sends joinIncident(IncId,Loc,Sev) only to the winning
+// Contract-Net bidder. Keep the assignment locally rather than relying
+// on Moise goalArgument for Java-string-valued locations.
 +!joinIncident(IncId,Loc,Sev)
    <- +assigned_incident(IncId,Loc,Sev);
 
@@ -91,10 +91,7 @@
 
       commitMission(mRespond)[artifact_id(SchArtId)].
 
-// Do NOT retrieve Loc/Sev through goalArgument here. The award message
-// already gave this vehicle the correct Java-string values, and those
-// values work with CityMapArtifact.getRoute/getETA.
-
+// mRespond enables this organisational goal after the winner commits.
 +!respondOnScene[scheme(Sch)]
    <- ?assigned_incident(IncId,Loc,Sev);
 
@@ -109,36 +106,69 @@
 
       !onSceneWork(IncId,Loc,Sev).
 
+// mRespond enables closeIncident after respondOnScene is achieved.
 +!closeIncident[scheme(Sch)]
    <- ?assigned_incident(IncId,Loc,Sev);
 
-      !afterSceneWork(IncId,Loc,Sev);
+      .print("[RESPONDER] scene work complete for ",IncId,
+             "; returning to station");
 
+      !afterSceneWork(IncId,Loc,Sev);
       !returnToStation;
 
       closeOutIncident(IncId);
 
-      // Clear the saved assignment only after the responder has
-      // completed its work and returned home.
+      .print("[RESPONDER] incident ",IncId,
+             " closed; vehicle is available again");
+
       -assigned_incident(IncId,Loc,Sev).
 
-/* ---------- movement: follow the shortest path hop by hop ---------------------- */
+/* ---------- shortest-path movement and smooth map animation ---------- */
 
 +!travelTo(Dest)
    <- ?at(Origin);
       getCoords(Origin,OX,OY);
       !pushToMap(OX,OY,"en_route");
-      getRoute(Origin,Dest,Path);
-      !followRoute(Path).
+      !followRoute(Origin,Dest).
 
-+!followRoute([]).
-+!followRoute([Node|Rest])
-   <- getCoords(Node,NX,NY);
-      !pushToMap(NX,NY,"en_route");
+// End condition: the vehicle has arrived at the destination node.
++!followRoute(Dest,Dest).
+
+// Obtain one Dijkstra hop at a time. getNextHop is implemented by
+// CityMapArtifact and returns a normal node string, avoiding opaque
+// Java list objects in AgentSpeak.
++!followRoute(Current,Dest)
+   <- getNextHop(Current,Dest,Next);
+
+      getCoords(Current,CX,CY);
+      getCoords(Next,NX,NY);
+
+      !animateSegment(CX,CY,NX,NY,1);
+
       -at(_);
-      +at(Node);
-      .wait(700);
-      !followRoute(Rest).
+      +at(Next);
+
+      !followRoute(Next,Dest).
+
+// Base case: ten visual interpolation updates have been sent.
++!animateSegment(_,_,_,_,11).
+
+// Move one tenth of a road segment every 70 ms. Ten updates take about
+// 700 ms, preserving the prior road-segment timing while making the
+// yellow vehicle marker glide rather than jump between graph nodes.
++!animateSegment(X1,Y1,X2,Y2,Step)
+   : Step <= 10
+   <- Ratio = Step / 10;
+
+      X = X1 + (X2 - X1) * Ratio;
+      Y = Y1 + (Y2 - Y1) * Ratio;
+
+      !pushToMap(X,Y,"en_route");
+
+      .wait(70);
+
+      NextStep = Step + 1;
+      !animateSegment(X1,Y1,X2,Y2,NextStep).
 
 +!returnToStation
    <- ?home_station(Home);
@@ -147,30 +177,44 @@
       getCoords(Node,X,Y);
       !pushToMap(X,Y,"idle").
 
-/* ---------- decentralised fallback: peer-to-peer self-assignment --------------- */
+/* ---------- decentralised fallback / medical backup ---------- */
 
+// Used by supervisor1 after a dispatch SLA breach and by firetruck.asl
+// for serious-fire medical backup. Matching idle responders wait in
+// proportion to their ETA; the lowest-ETA responder normally announces
+// its claim first.
 +!selfAssign(IncId,Type,Loc)
    : status("idle") & not claimed(IncId) & my_vehicle_type(Type)
-   <- ?at(Node2);
-      getETA(Node2,Loc,Eta);
+   <- ?at(Node);
+      getETA(Node,Loc,Eta);
       DelayMs = Eta * 150;
       .wait(DelayMs);
+
       if (not claimed(IncId)) {
          .broadcast(tell,claimed(IncId));
-         .print("[FALLBACK] self-assigning to ",IncId," (ETA ~",Eta,"s)");
+         .print("[FALLBACK] self-assigning to ",IncId,
+                " at ",Loc," (ETA ~",Eta,"s)");
+
          !travelTo(Loc);
-         ?at(Node3);
-         getCoords(Node3,X3,Y3);
-         !pushToMap(X3,Y3,"on_scene");
-         !onSceneWork(IncId,Loc,"unknown");
-         !afterSceneWork(IncId,Loc,"unknown");
+
+         ?at(SceneNode);
+         getCoords(SceneNode,SX,SY);
+         !pushToMap(SX,SY,"on_scene");
+
+         // The fallback message has no original severity. A safe default
+         // keeps type-specific scene plans executable.
+         !onSceneWork(IncId,Loc,1);
+         !afterSceneWork(IncId,Loc,1);
+
          !returnToStation;
       }.
 
 +!selfAssign(_,_,_).
 
-/* ---------- background fuel loop (uses the station's FuelStationArtifact) ------ */
+/* ---------- background fuel-station resource use ---------- */
 
+// Each responder already focuses its own station's fuel artifact through
+// evds.jcm (stationNorth.fuelPumpN or stationSouth.fuelPumpS).
 +!fuelLoop
    <- .wait(math.random*25000+20000);
       if (status("idle")) {

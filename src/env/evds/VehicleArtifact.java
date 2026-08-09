@@ -29,7 +29,6 @@ public class VehicleArtifact extends Artifact {
 
     @OPERATION
     public void updatePosition(double x, double y, String status) {
-        System.err.println("[DEBUG] VehicleArtifact.updatePosition called: " + x + "," + y + " " + status);
         getObsProperty("posX").updateValue(x);
         getObsProperty("posY").updateValue(y);
         getObsProperty("status").updateValue(status);

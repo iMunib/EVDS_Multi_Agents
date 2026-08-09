@@ -84,6 +84,22 @@ public class CityMapArtifact extends Artifact {
         addRoad("Industrial_Park","Downtown",55);
         addRoad("Stadium","Suburb_East",35);
     }
+    
+    @OPERATION
+    public void getNextHop(String from, String to,
+                           OpFeedbackParam<String> nextNode) {
+
+        List<String> path = dijkstra(from, to, null);
+
+        if (path == null || path.size() < 2) {
+            failed("no_next_hop_" + from + "_" + to);
+            return;
+        }
+
+        // path[0] is the current node; path[1] is the next node
+        // on the lowest-cost route calculated by Dijkstra.
+        nextNode.set(path.get(1));
+    }
 
     @OPERATION
     public void getCoords(String node, OpFeedbackParam<Double> x, OpFeedbackParam<Double> y) {

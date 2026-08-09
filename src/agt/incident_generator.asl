@@ -11,7 +11,7 @@ locations(["Downtown","Mall","Stadium","University","Airport",
 !generateIncidents.
 
 +!generateIncidents
-   <- .wait(math.random*4000+3000);
+   <- .wait(math.random*8000+12000);
       !pickAndPost;
       !generateIncidents.
 

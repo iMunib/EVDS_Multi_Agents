@@ -36,10 +36,10 @@
       .send(supervisor1,tell,newScheme(SchName,IncId,Type,Loc));
       // put a marker on the live map
       getCoords(Loc,LX,LY);
-      showIncident(IncId,LX,LY).
+	  showIncident(IncId,Type,Sev,LX,LY).
 
 +!allocateVehicle[scheme(Sch)]
-   <- .print("[DEBUG] allocateVehicle plan STARTED for scheme ",Sch);
+   <- .print("[DISPATCH] processing scheme ",Sch);
 
       // Take one pending incident record from the dispatcher's
       // local queue. It is removed immediately so another scheme
