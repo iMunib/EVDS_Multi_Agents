@@ -11,6 +11,12 @@ plugins {
     id 'maven-publish'
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 defaultTasks 'run'
 
 apply from: '.jcm-deps.gradle' // this file contains dependencies declared in the .jcm files
@@ -57,6 +63,7 @@ task run (type: JavaExec, dependsOn: 'classes') {
     doFirst {
         mkdir 'log'
     }
+    executable = javaToolchains.launcherFor(java.toolchain).get().executablePath
     mainClass = 'jacamo.infra.JaCaMoLauncher'
     args 'evds.jcm'
     // jvmArgs '-Xss15m'
@@ -141,6 +148,7 @@ task testJaCaMo {
     doFirst {
         try {
             javaexec {
+                executable = javaToolchains.launcherFor(java.toolchain).get().executablePath
                 mainClass = 'jacamo.infra.JaCaMoLauncher'
                 if (gradle.startParameter.logLevel.toString().equals("DEBUG")) {
                     args = ['src/test/tests.jcm', '--log-conf', '$jason/templates/console-debug-logging.properties']
