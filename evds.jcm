@@ -2,22 +2,40 @@
     EVDS - Emergency Vehicle Dispatch System
     CST3118 Group Project - JaCaMo implementation
 
-    Run with:  gradle run
-    (from the project root, once this folder has been dropped into a
-    JaCaMo gradle scaffold -- see README.md for the exact steps)
+    This JCM file is the application's composition root. It connects:
+      1. Jason agents and their AgentSpeak source files;
+      2. CArtAgO workspaces and Java artifacts; and
+      3. the Moise organisation, its group, roles, and players.
+
+    Run from the project root with:
+        .\gradlew clean run
 */
 
 mas evds {
 
-    // ---------------- Agent dimension ----------------
+    // ================================================================
+    // AGENT DIMENSION
+    // ================================================================
+    // "focus" makes an artifact's observable properties and operations
+    // available to an agent. Workspace joins/focuses happen
+    // asynchronously at startup, which is why AgentSpeak plans use the
+    // ?joined(Name,Id) retry helper before workspace-specific actions.
+
+    // Central dispatcher. It receives incident events from board,
+    // accesses city ETA/coordinates through cityMap, and displays
+    // incident markers through mapView.
     agent dispatcher1 : dispatcher.asl {
         focus: cityHub.cityMap
         focus: cityHub.board
         focus: cityHub.mapView
     }
 
+    // Organisation monitor. It watches incident scheme boards for
+    // deadline failures and triggers the peer-to-peer fallback protocol.
     agent supervisor1 : supervisor.asl
 
+    // Medical responders. setupVehicle(Home) creates each unit's
+    // VehicleArtifact and establishes its initial city-map node.
     agent amb1 : ambulance.asl {
         goals: setupVehicle("Station_North")
         focus: cityHub.cityMap
@@ -37,6 +55,7 @@ mas evds {
         focus: stationSouth.fuelPumpS
     }
 
+    // Fire responders.
     agent fire1 : firetruck.asl {
         goals: setupVehicle("Station_North")
         focus: cityHub.cityMap
@@ -50,6 +69,7 @@ mas evds {
         focus: stationSouth.fuelPumpS
     }
 
+    // Patrol responders.
     agent police1 : police.asl {
         goals: setupVehicle("Station_North")
         focus: cityHub.cityMap
@@ -63,6 +83,8 @@ mas evds {
         focus: stationSouth.fuelPumpS
     }
 
+    // Hospitals are agents, not merely artifacts: each creates its own
+    // HospitalArtifact in cityHub and periodically discharges patients.
     agent hospital_general : hospital.asl {
         goals: setupHospital(12)
         focus: cityHub.board
@@ -72,6 +94,8 @@ mas evds {
         focus: cityHub.board
     }
 
+    // Utility agents. They are deliberately outside the Moise response
+    // roles because they generate/modify environment state only.
     agent incident_generator : incident_generator.asl {
         focus: cityHub.board
     }
@@ -80,30 +104,39 @@ mas evds {
         focus: cityHub.cityMap
     }
 
-    // ---------------- Environment dimension ----------------
-    // cityHub: the shared "downtown" workspace every agent that needs
-    // city-wide information joins (map, incident board, live map view).
+    // ================================================================
+    // ENVIRONMENT DIMENSION
+    // ================================================================
+
+    // Shared city workspace. All agents needing routing, incident board,
+    // or GUI information join/focus artifacts in this workspace.
     workspace cityHub {
         artifact cityMap : evds.CityMapArtifact()
         artifact board   : evds.DispatchBoardArtifact()
+
+        // The dispatcher owns the initial GUI focus. Responders look up
+        // mapView explicitly during setupVehicle and push position updates.
         artifact mapView : evds.CityMapGUI() {
             focused-by: dispatcher1
         }
     }
 
-    // Two extra workspaces, one per physical station, each with its own
-    // local resource (a small pool of fuel pumps). Vehicles based at a
-    // station join only that station's workspace -- a simple example of
-    // partitioning the environment instead of dumping every artifact into
-    // one global workspace.
+    // Local station workspaces show environment partitioning. Each has
+    // a limited shared fuel resource rather than placing all resources
+    // in one global workspace.
     workspace stationNorth {
         artifact fuelPumpN : evds.FuelStationArtifact(2)
     }
+
     workspace stationSouth {
         artifact fuelPumpS : evds.FuelStationArtifact(2)
     }
 
-    // ---------------- Organization dimension ----------------
+    // ================================================================
+    // ORGANISATION DIMENSION
+    // ================================================================
+    // evdsOrg loads the Moise OS from evds-os.xml. "players" assigns
+    // actual Jason agents to the organisation's abstract roles.
     organisation evdsOrg : evds-os.xml {
         group dispatchGrp : dispatchGroup {
             players: dispatcher1      dispatcher

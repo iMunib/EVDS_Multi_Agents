@@ -1,21 +1,34 @@
-// firetruck.asl -- fire responder.
-// Movement, bidding, org plans and the fallback protocol all come from
-// common_responder.asl; this file only defines what a fire truck
-// actually *does* at a scene and afterwards.
+// firetruck.asl
+// ====================================================================
+// Fire responder specialisation.
+//
+// common_responder.asl supplies all shared responder behaviour:
+// vehicle setup, Contract-Net bidding, organisational assignment,
+// Dijkstra movement, map animation, normal return, fallback, and fuel.
+//
+// This file only supplies behaviour unique to a fire truck.
+// ====================================================================
 
+// Must remain a Jason string because incident generator/dispatcher
+// broadcasts incident types as strings such as "fire".
 my_vehicle_type("fire").
 
+// Called after this fire truck arrives at the incident location and the
+// Moise respondOnScene goal is enabled for it.
 +!onSceneWork(IncId,Loc,Sev)
-   <- .print("[FIRETRUCK] suppressing fire at ",Loc," (severity ",Sev,")");
+   <- .print("[FIRETRUCK] suppressing fire at ",Loc,
+             " (severity ",Sev,")");
+
+      // Simulated fire suppression duration.
       .wait(2000).
 
-// For serious fires we ask for medical backup on the spot. Rather than
-// invent a second dispatch mechanism, this simply reuses the very same
-// selfAssign primitive that supervisor1 uses for SLA-breach fallback:
-// one reusable "ask any idle peer to come here directly" building
-// block, used both for resilience and for ordinary in-field requests.
+// Called before the responder returns to station during closeIncident.
 +!afterSceneWork(IncId,Loc,Sev)
    <- .print("[FIRETRUCK] scene secured");
+
+      // Severity 4 and 5 fires request medical backup. This uses the
+      // same decentralised selfAssign primitive as supervisor fallback;
+      // it is not a second normal mRespond assignment.
       if (Sev >= 4) {
          .print("[FIRETRUCK] requesting medical backup at ",Loc);
          .broadcast(achieve,selfAssign(IncId,"medical",Loc));

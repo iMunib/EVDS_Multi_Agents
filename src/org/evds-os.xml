@@ -1,123 +1,151 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet href="https://moise-lang.github.io/xml/os.xsl" type="text/xsl" ?>
+<!--
+  EVDS Moise Organisational Specification
+  ========================================
+
+  This file defines the ORGANISATION dimension of EVDS.
+
+  It has three sections:
+    1. Structural specification: valid roles and group membership limits.
+    2. Functional specification: incident workflow, goals, missions,
+       order, arguments, and time-to-fulfil deadlines.
+    3. Normative specification: obligations and permissions connecting
+       roles to missions.
+-->
 <organisational-specification
     id="evds"
     os-version="1.1"
     xmlns='http://moise.sourceforge.net/os'
     xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
     xsi:schemaLocation='http://moise.sourceforge.net/os
-                        https://moise-lang.github.io/xml/os.xsd' >
+                        https://moise-lang.github.io/xml/os.xsd'>
 
-<!--
-  EVDS organisational specification.
-
-  One group (dispatchGroup) with six roles. "responder" is an abstract
-  role, specialised by ambulance_role / firetruck_role / police_role, so
-  the normative-specification only has to state the obligation once
-  (role="responder") and it applies to all three vehicle kinds.
-
-  One parametrised scheme (incidentResponseScheme) drives the whole
-  lifecycle of a single incident: allocateVehicle (dispatcher's job),
-  then respondOnScene and closeIncident (assigned responder's job), in
-  that order, each with a deadline (ttf = time-to-fulfil). Deadlines are
-  what let the normative dimension actually do something useful: when
-  allocateVehicle is not achieved in time, the organisation raises an
-  oblUnfulfilled event that supervisor1 listens for (see supervisor.asl)
-  to trigger the decentralised fallback protocol.
--->
-
-<structural-specification>
-
-  <role-definitions>
-    <role id="dispatcher" />
-    <role id="responder" />
-    <role id="ambulance_role"> <extends role="responder"/> </role>
-    <role id="firetruck_role"> <extends role="responder"/> </role>
-    <role id="police_role">    <extends role="responder"/> </role>
-    <role id="hospital_role" />
-    <role id="supervisor_role" />
-  </role-definitions>
-
-  <group-specification id="dispatchGroup">
-    <roles>
-      <role id="dispatcher"      min="1" max="2"/>
-      <role id="ambulance_role"  min="0" max="10"/>
-      <role id="firetruck_role"  min="0" max="10"/>
-      <role id="police_role"     min="0" max="10"/>
-      <role id="hospital_role"   min="1" max="5"/>
-      <role id="supervisor_role" min="0" max="2"/>
-    </roles>
-  </group-specification>
-
-</structural-specification>
-
-<functional-specification>
-  <scheme id="incidentResponseScheme">
-    <goal id="handleIncident">
-      <argument id="IncId"/>
-      <argument id="Type"/>
-      <argument id="Loc"/>
-      <argument id="Sev"/>
-      <plan operator="sequence">
-        <goal id="allocateVehicle" ttf="20 seconds" />
-        <goal id="respondOnScene"  ttf="6 minutes" />
-        <goal id="closeIncident"   ttf="4 minutes" />
-      </plan>
-    </goal>
-
-    <mission id="mDispatch" min="1" max="1">
-      <goal id="allocateVehicle" />
-    </mission>
-    <mission id="mRespond" min="0" max="1">
-      <goal id="respondOnScene" />
-      <goal id="closeIncident" />
-    </mission>
-  </scheme>
-</functional-specification>
-
-<normative-specification>
-
-  <norm id="n1"
-        type="obligation"
-        role="dispatcher"
-        mission="mDispatch" />
-
-  <!-- A winning responder must be permitted to join mRespond.
-       Do not make this an obligation: otherwise every idle responder
-       can auto-commit and violate mRespond's max="1" cardinality. -->
-  <norm id="pAmbulanceRespond"
-        type="permission"
-        role="ambulance_role"
-        mission="mRespond" />
-
-  <norm id="pFiretruckRespond"
-        type="permission"
-        role="firetruck_role"
-        mission="mRespond" />
-
-  <norm id="pPoliceRespond"
-        type="permission"
-        role="police_role"
-        mission="mRespond" />
-
-  <!-- Keep your existing explanatory comment and the rest of the
-       normative specification below this point. -->
-  <!--
-    No norm on "responder"/mRespond, deliberately. org-obedient.asl (the
-    standard obligation-handling template included by every org-aware
-    agent) reacts to ANY obligation to commit to a mission by committing
-    immediately and unconditionally: it has no notion of "wait for the
-    Contract-Net winner to be told". With mRespond capped at max="1", an
-    obligation on the whole "responder" role made every idle responder
-    auto-commit the instant the goal was enabled, so multiple vehicles
-    raced to fill the one slot: the loser(s) failed with
-    mission_cardinality errors and were left running respondOnScene with
-    no scheme arguments bound. Confirmed live against the real runtime,
-    not theoretical. Mission selection here is deliberately kept outside
-    the normative layer: dispatcher1 tells exactly one winning agent to
-    commit (see joinIncident in common_responder.asl), so no norm is
-    declared on this mission at all.
+  <!-- =============================================================
+       STRUCTURAL SPECIFICATION
+       =============================================================
+       Answers: who may participate, which roles exist, and how many
+       agents may play each concrete role in a dispatch group.
   -->
-</normative-specification>
+  <structural-specification>
+
+    <role-definitions>
+      <!-- Dispatcher manages standard allocation for each incident. -->
+      <role id="dispatcher" />
+
+      <!-- Abstract parent role. No agent directly plays responder;
+           ambulance/firetruck/police inherit the responder concept. -->
+      <role id="responder" />
+      <role id="ambulance_role"> <extends role="responder"/> </role>
+      <role id="firetruck_role"> <extends role="responder"/> </role>
+      <role id="police_role">    <extends role="responder"/> </role>
+
+      <!-- Hospitals own bed-capacity resources; supervisors monitor
+           organisational deadline failures without doing response work. -->
+      <role id="hospital_role" />
+      <role id="supervisor_role" />
+    </role-definitions>
+
+    <group-specification id="dispatchGroup">
+      <roles>
+        <!-- At least one dispatcher and hospital are required. -->
+        <role id="dispatcher"      min="1" max="2"/>
+        <role id="ambulance_role"  min="0" max="10"/>
+        <role id="firetruck_role"  min="0" max="10"/>
+        <role id="police_role"     min="0" max="10"/>
+        <role id="hospital_role"   min="1" max="5"/>
+        <role id="supervisor_role" min="0" max="2"/>
+      </roles>
+    </group-specification>
+
+  </structural-specification>
+
+  <!-- =============================================================
+       FUNCTIONAL SPECIFICATION
+       =============================================================
+       Answers: what work must happen, in what order, and which mission
+       groups the work for dispatchers and winning responders.
+  -->
+  <functional-specification>
+
+    <!-- A fresh instance of this scheme is created for every incident,
+         for example: sch_inc12. -->
+    <scheme id="incidentResponseScheme">
+
+      <!-- Root organisational incident goal. The dispatcher fills these
+           arguments when it creates the scheme instance. -->
+      <goal id="handleIncident">
+        <argument id="IncId"/>
+        <argument id="Type"/>
+        <argument id="Loc"/>
+        <argument id="Sev"/>
+
+        <!-- Goals are enabled in strict order. A later goal cannot be
+             achieved until its previous goal is completed. -->
+        <plan operator="sequence">
+          <!-- Dispatcher must select a vehicle within 20 seconds. -->
+          <goal id="allocateVehicle" ttf="20 seconds" />
+
+          <!-- The selected responder has six minutes to travel and
+               perform its on-scene response. -->
+          <goal id="respondOnScene"  ttf="6 minutes" />
+
+          <!-- The selected responder then has four minutes for
+               post-scene work, return, and incident closure. -->
+          <goal id="closeIncident"   ttf="4 minutes" />
+        </plan>
+      </goal>
+
+      <!-- Exactly one dispatcher performs standard allocation. -->
+      <mission id="mDispatch" min="1" max="1">
+        <goal id="allocateVehicle" />
+      </mission>
+
+      <!-- Exactly one standard winning responder performs the normal
+           incident response lifecycle. The dispatcher selects this
+           responder through Contract-Net ETA bidding. -->
+      <mission id="mRespond" min="0" max="1">
+        <goal id="respondOnScene" />
+        <goal id="closeIncident" />
+      </mission>
+    </scheme>
+  </functional-specification>
+
+  <!-- =============================================================
+       NORMATIVE SPECIFICATION
+       =============================================================
+       Answers: who must commit to a mission and who is allowed to do so.
+  -->
+  <normative-specification>
+
+    <!-- dispatcher1 is obliged to commit to mDispatch. The included
+         org-obedient.asl helper reacts to this obligation automatically. -->
+    <norm id="n1"
+          type="obligation"
+          role="dispatcher"
+          mission="mDispatch" />
+
+    <!-- Responders receive PERMISSION, not OBLIGATION, for mRespond.
+         This is essential because mRespond has max="1": if every
+         responder were obliged, all idle vehicles could auto-commit and
+         race for the single mission slot. The dispatcher sends the
+         Contract-Net winner a joinIncident message; only that winner
+         calls commitMission(mRespond). -->
+    <norm id="pAmbulanceRespond"
+          type="permission"
+          role="ambulance_role"
+          mission="mRespond" />
+
+    <norm id="pFiretruckRespond"
+          type="permission"
+          role="firetruck_role"
+          mission="mRespond" />
+
+    <norm id="pPoliceRespond"
+          type="permission"
+          role="police_role"
+          mission="mRespond" />
+
+  </normative-specification>
 
 </organisational-specification>
